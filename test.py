@@ -2,4 +2,6 @@ def addition(self, x, y):
     return x + y
 
 
-# test comment
+def print_me(text):
+    print(text)
+    return None
