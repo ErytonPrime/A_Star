@@ -1,2 +1,5 @@
-def addition(self, x):
-    return x + x
+def addition(self, x, y):
+    return x + y
+
+
+# test comment
