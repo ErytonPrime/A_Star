@@ -19,7 +19,7 @@ def _affinity_score(
     return score
 
 
-def _fermi_correction(
+def _correction(
     terrain: TerrainType,
     current_counts: dict[TerrainType, int],
     target_composition: dict[TerrainType, float],
@@ -52,16 +52,16 @@ def _compute_probabilities(
 ) -> dict[TerrainType, float]:
     """
     Compute normalized probability distribution over candidate terrains
-    by combining affinity score and Fermi correction multiplicatively.
+    by combining affinity score and correction multiplicatively.
     """
     raw: dict[TerrainType, float] = {}
 
     for terrain in candidate_terrains:
         affinity = _affinity_score(terrain, collapsed_neighbours)
-        fermi = _fermi_correction(
+        correction = _correction(
             terrain, current_counts, target_composition, total_collapsed
         )
-        raw[terrain] = affinity * fermi
+        raw[terrain] = affinity * correction
 
     total = sum(raw.values())
 
