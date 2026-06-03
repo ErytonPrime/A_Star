@@ -1,8 +1,13 @@
 import pygame
 import pygame_gui
+from typing import cast
 from visualization.camera import Camera
 from topology.grid import Shape
 from math import sqrt
+from world_content.terrain import TerrainType, TERRAIN_COLORS
+from world_content.biome import Biome
+
+terrain_map: dict[tuple[int, int], TerrainType] = {}
 
 # Layout constants
 INTERNAL_WIDTH = 1600
@@ -40,6 +45,10 @@ HELP_ENTRIES = [
     ("F", "Toggle borderless fullscreen"),
     ("H", "Toggle this help menu"),
 ]
+
+# Biome display names
+BIOME_NAMES = {biome: biome.name.capitalize() for biome in Biome}
+BIOME_BY_NAME = {v: k for k, v in BIOME_NAMES.items()}
 
 
 def get_square_points(
@@ -147,7 +156,7 @@ def draw_help_overlay(surface, title_font, key_font, manager):
     return pygame.Rect(close_x, close_y, 120, 35)
 
 
-def run(on_generate, on_grid_ready, initial_width, initial_height):
+def run(on_generate, on_populate, on_grid_ready, initial_width, initial_height):
     pygame.init()
 
     is_fullscreen = False
@@ -172,16 +181,21 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
     padding = 20
     sidebar_x = CANVAS_WIDTH + padding
     widget_width = SIDEBAR_WIDTH - (padding * 2)
+    label_width = 80
+    input_x = sidebar_x + label_width + 5
+    input_width = widget_width - label_width - 5
 
     # --- Grid panel ---
-    grid_panel_rect = pygame.Rect(CANVAS_WIDTH + 10, 20, SIDEBAR_WIDTH - 20, 220)
+    grid_panel_rect = pygame.Rect(CANVAS_WIDTH + 10, 20, SIDEBAR_WIDTH - 20, 195)
 
     # Width row
     pygame_gui.elements.UILabel(
-        relative_rect=pygame.Rect(sidebar_x, 45, 80, 30), text="Width:", manager=manager
+        relative_rect=pygame.Rect(sidebar_x, 45, label_width, 30),
+        text="Width:",
+        manager=manager,
     )
     width_input = pygame_gui.elements.UITextEntryLine(
-        relative_rect=pygame.Rect(sidebar_x + 85, 45, widget_width - 85, 30),
+        relative_rect=pygame.Rect(input_x, 45, input_width, 30),
         manager=manager,
     )
     width_input.set_text(str(initial_width))
@@ -189,12 +203,12 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
 
     # Height row
     pygame_gui.elements.UILabel(
-        relative_rect=pygame.Rect(sidebar_x, 90, 80, 30),
+        relative_rect=pygame.Rect(sidebar_x, 90, label_width, 30),
         text="Height:",
         manager=manager,
     )
     height_input = pygame_gui.elements.UITextEntryLine(
-        relative_rect=pygame.Rect(sidebar_x + 85, 90, widget_width - 85, 30),
+        relative_rect=pygame.Rect(input_x, 90, input_width, 30),
         manager=manager,
     )
     height_input.set_text(str(initial_height))
@@ -202,14 +216,14 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
 
     # Shape row
     pygame_gui.elements.UILabel(
-        relative_rect=pygame.Rect(sidebar_x, 135, 80, 30),
+        relative_rect=pygame.Rect(sidebar_x, 135, label_width, 30),
         text="Shape:",
         manager=manager,
     )
     shape_dropdown = pygame_gui.elements.UIDropDownMenu(
         options_list=["Square", "Hexagon", "Triangle"],
         starting_option="Square",
-        relative_rect=pygame.Rect(sidebar_x + 85, 135, widget_width - 85, 30),
+        relative_rect=pygame.Rect(input_x, 135, input_width, 30),
         manager=manager,
     )
 
@@ -220,6 +234,43 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
         manager=manager,
     )
 
+    # --- Terrain panel ---
+    terrain_panel_top = 235
+    terrain_panel_rect = pygame.Rect(
+        CANVAS_WIDTH + 10, terrain_panel_top, SIDEBAR_WIDTH - 20, 185
+    )
+
+    pygame_gui.elements.UILabel(
+        relative_rect=pygame.Rect(sidebar_x, terrain_panel_top + 25, label_width, 30),
+        text="Biome:",
+        manager=manager,
+    )
+    biome_dropdown = pygame_gui.elements.UIDropDownMenu(
+        options_list=[BIOME_NAMES[b] for b in Biome],
+        starting_option=BIOME_NAMES[Biome.PLAINS],
+        relative_rect=pygame.Rect(input_x, terrain_panel_top + 25, input_width, 30),
+        manager=manager,
+    )
+
+    pygame_gui.elements.UILabel(
+        relative_rect=pygame.Rect(sidebar_x, terrain_panel_top + 65, label_width, 30),
+        text="Seed:",
+        manager=manager,
+    )
+    seed_input = pygame_gui.elements.UITextEntryLine(
+        relative_rect=pygame.Rect(input_x, terrain_panel_top + 65, input_width, 30),
+        manager=manager,
+    )
+    seed_input.set_text("42")
+    seed_input.set_allowed_characters("numbers")
+
+    populate_button = pygame_gui.elements.UIButton(
+        relative_rect=pygame.Rect(sidebar_x, terrain_panel_top + 105, widget_width, 35),
+        text="Populate Grid",
+        manager=manager,
+    )
+
+    # --- Bottom buttons ---
     # Help button
     help_button = pygame_gui.elements.UIButton(
         relative_rect=pygame.Rect(sidebar_x, INTERNAL_HEIGHT - 110, widget_width, 40),
@@ -243,12 +294,13 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
     )
 
     # --- Flash state ---
-    flash_timers = {"width": 0.0, "height": 0.0}
+    flash_timers = {"width": 0.0, "height": 0.0, "seed": 0.0}
     FLASH_DURATION = 0.5
 
     # --- Grid state ---
     current_grid = None
     current_shape = Shape.SQUARE
+    terrain_map: dict[tuple[int, int], object] = {}
 
     def set_grid(grid):
         nonlocal current_grid, current_shape
@@ -269,7 +321,11 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
         grid_pixel_h = world_h * camera.scale
         camera.center_on_grid(grid_pixel_w, grid_pixel_h)
 
-    on_grid_ready(set_grid)
+    def set_terrain(new_terrain_map):
+        nonlocal terrain_map
+        terrain_map = new_terrain_map
+
+    on_grid_ready(set_grid, set_terrain)
 
     def validate_and_generate():
         width_str = width_input.get_text()
@@ -302,6 +358,13 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
             shape_name = shape_dropdown.selected_option[0]
             on_generate(width, height, shape_name)
 
+    def validate_and_populate():
+        seed_str = seed_input.get_text()
+        seed = int(seed_str) if seed_str else 42
+        biome_name = biome_dropdown.selected_option[0]
+        biome = BIOME_BY_NAME[biome_name]
+        on_populate(biome, seed)
+
     def toggle_help():
         nonlocal show_help
         show_help = not show_help
@@ -325,18 +388,28 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
             wx, wy = node.world_position.x, node.world_position.y
             sx, sy = camera.world_to_screen(wx, wy)
 
+            coords = (node.grid_position.x, node.grid_position.y)
+            terrain = terrain_map.get(coords)
+            if terrain is not None:
+                color = TERRAIN_COLORS[cast(TerrainType, terrain)]
+            else:
+                color = COLOR_NODE
+
             match current_shape:
                 case Shape.SQUARE:
                     points = get_square_points(sx, sy, camera.scale, gap)
+
                 case Shape.HEXAGON:
                     points = get_hex_points(sx, sy, camera.scale, gap)
+
                 case Shape.TRIANGLE:
                     pointing_up = (node.grid_position.x + node.grid_position.y) % 2 == 1
                     points = get_triangle_points(sx, sy, camera.scale, gap, pointing_up)
+
                 case _:
                     continue
 
-            pygame.draw.polygon(surface, COLOR_NODE, points)
+            pygame.draw.polygon(surface, color, points)
 
         surface.set_clip(None)
 
@@ -391,6 +464,8 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
                     running = False
                 if event.ui_element == generate_button:
                     validate_and_generate()
+                if event.ui_element == populate_button:
+                    validate_and_populate()
                 if event.ui_element == help_button:
                     toggle_help()
                 if event.ui_element == close_help_button:
@@ -426,6 +501,7 @@ def run(on_generate, on_grid_ready, initial_width, initial_height):
         )
 
         draw_panel(internal_surface, panel_font, "Grid", grid_panel_rect)
+        draw_panel(internal_surface, panel_font, "Terrain", terrain_panel_rect)
         draw_grid(internal_surface)
 
         if show_help:
