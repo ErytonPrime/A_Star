@@ -39,8 +39,10 @@ class Grid:
 
         self._create_nodes()
 
-    def _create_nodes(self):
+    def __repr__(self):
+        return f"Grid(width={self.width}, height={self.height}, shape={self.shape.name}, nodes={len(self.nodes)})"
 
+    def _create_nodes(self):
         for y in range(self.height):
             for x in range(self.width):
                 world_x, world_y = self.grid_to_world(x, y)
@@ -59,12 +61,14 @@ class Grid:
 
             case Shape.HEXAGON:
                 if x % 2 == 1:
-                    return 1.5 * ((x + 1) // 2), sqrt(3) * y + sqrt(3) / 2
-                return 3 * x // 2, sqrt(3) * y
+                    return 1.5 * x, sqrt(3) * y + sqrt(3) / 2
+                return 1.5 * x, sqrt(3) * y
+
             case Shape.TRIANGLE:
                 if (x + y) % 2 == 1:
-                    return x / 2, y + (1 / sqrt(3))
-                return x / 2, y + (1 / (2 * sqrt(3)))
+                    return x / 2, sqrt(3) / 2 * y + (1 / sqrt(3))
+                return x / 2, sqrt(3) / 2 * y + (1 / (2 * sqrt(3)))
+
             case _:
                 raise ValueError(f"Unsupported shape: {self.shape}")
 
