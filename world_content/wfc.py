@@ -1,5 +1,6 @@
 import math
 import random
+import heapq
 from typing import Optional
 from topology.grid import Grid
 from world_content.terrain import TerrainType, TERRAIN_COST
@@ -152,58 +153,22 @@ def generate(
     target_composition = get_composition(biome)
     candidate_terrains = list(target_composition.keys())
 
-    # State
     collapsed: dict[tuple[int, int], TerrainType] = {}
     current_counts: dict[TerrainType, int] = {t: 0 for t in candidate_terrains}
+    in_queue: set[tuple[int, int]] = set()
 
-    # All nodes start uncollapsed
-    uncollapsed: set[tuple[int, int]] = set(grid.nodes.keys())
+    # Start from center cell
+    center_x = grid.width // 2
+    center_y = grid.height // 2
+    start_node = grid.get_node(center_x, center_y)
+    assert start_node is not None
 
-    while uncollapsed:
-        # --- Find cell with lowest Shannon entropy ---
-        lowest_entropy = math.inf
-        lowest_coords: Optional[tuple[int, int]] = None
-
-        for coords in uncollapsed:
-            node = grid.get_node(*coords)
-            assert node is not None
-
-            # Get already collapsed neighbours
-            collapsed_neighbours = [
-                collapsed[n.grid_position.x, n.grid_position.y]
-                for n in grid.get_neighbours(node)
-                if (n.grid_position.x, n.grid_position.y) in collapsed
-            ]
-
-            probs = _compute_probabilities(
-                candidate_terrains,
-                collapsed_neighbours,
-                current_counts,
-                target_composition,
-                len(collapsed),
-            )
-
-            entropy = _shannon_entropy(probs)
-
-            # Add tiny noise to break ties randomly
-            entropy += random.uniform(0, 1e-6)
-
-            if entropy < lowest_entropy:
-                lowest_entropy = entropy
-                lowest_coords = coords
-
-        assert lowest_coords is not None
-
-        # --- Collapse the chosen cell ---
-        node = grid.get_node(*lowest_coords)
-        assert node is not None
-
+    def compute_entropy(node) -> float:
         collapsed_neighbours = [
-            collapsed[n.grid_position.x, n.grid_position.y]
+            collapsed[(n.grid_position.x, n.grid_position.y)]
             for n in grid.get_neighbours(node)
             if (n.grid_position.x, n.grid_position.y) in collapsed
         ]
-
         probs = _compute_probabilities(
             candidate_terrains,
             collapsed_neighbours,
@@ -211,11 +176,56 @@ def generate(
             target_composition,
             len(collapsed),
         )
+        return _shannon_entropy(probs) + random.uniform(0, 1e-6)
 
+    def collapse_node(node):
+        coords = (node.grid_position.x, node.grid_position.y)
+        collapsed_neighbours = [
+            collapsed[(n.grid_position.x, n.grid_position.y)]
+            for n in grid.get_neighbours(node)
+            if (n.grid_position.x, n.grid_position.y) in collapsed
+        ]
+        probs = _compute_probabilities(
+            candidate_terrains,
+            collapsed_neighbours,
+            current_counts,
+            target_composition,
+            len(collapsed),
+        )
         chosen = _sample(probs)
-        collapsed[lowest_coords] = chosen
+        collapsed[coords] = chosen
         current_counts[chosen] += 1
-        uncollapsed.remove(lowest_coords)
+
+    # Collapse the start node
+    collapse_node(start_node)
+
+    # Priority queue: (entropy, node)
+    heap: list[tuple[float, int, int]] = []
+
+    def push_neighbours(node):
+        for neighbour in grid.get_neighbours(node):
+            coords = (neighbour.grid_position.x, neighbour.grid_position.y)
+            if coords not in collapsed and coords not in in_queue:
+                entropy = compute_entropy(neighbour)
+                heapq.heappush(heap, (entropy, coords[0], coords[1]))
+                in_queue.add(coords)
+
+    push_neighbours(start_node)
+
+    while heap:
+        _, nx, ny = heapq.heappop(heap)
+        coords = (nx, ny)
+
+        # Skip if already collapsed (stale entry)
+        if coords in collapsed:
+            continue
+
+        node = grid.get_node(nx, ny)
+        assert node is not None
+
+        collapse_node(node)
+        in_queue.discard(coords)
+        push_neighbours(node)
 
     # Post-generation cleanup
     collapsed = _fix_isolated_tiles(collapsed, grid)

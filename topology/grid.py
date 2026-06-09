@@ -57,7 +57,7 @@ class Grid:
     def grid_to_world(self, x, y) -> tuple[float, float]:
         match self.shape:
             case Shape.SQUARE:
-                return x, y
+                return x + 0.5, y + 0.5
 
             case Shape.HEXAGON:
                 if x % 2 == 1:

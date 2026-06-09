@@ -93,3 +93,20 @@ def get_cost(terrain: TerrainType, biome_modifier: float = 1.0) -> float:
     if base == math.inf:
         return math.inf
     return base * biome_modifier
+
+
+def get_valid_start_terrains(
+    composition: dict[TerrainType, float],
+) -> frozenset[TerrainType]:
+    """Return the two cheapest passable terrain types within a biome composition."""
+    passable = {t: TERRAIN_COST[t] for t in composition if TERRAIN_COST[t] != math.inf}
+    if not passable:
+        return frozenset()
+    distinct_costs = sorted(set(passable.values()))
+    valid_costs = set(distinct_costs[:2])
+    return frozenset(t for t, c in passable.items() if c in valid_costs)
+
+
+VALID_GOAL_TERRAINS: frozenset[TerrainType] = frozenset(
+    {t for t in TerrainType if TERRAIN_COST[t] != math.inf}
+)

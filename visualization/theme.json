@@ -1,0 +1,60 @@
+{
+  "defaults": {
+    "font": {
+      "name": "roboto",
+      "size": "20",
+      "regular_path": "/home/singularity/Documents/Python Workspace/A_Star/visualization/font/static/RobotoMono-Regular.ttf",
+      "bold_path": "/home/singularity/Documents/Python Workspace/A_Star/visualization/font/static/RobotoMono-Bold.ttf",
+      "italic_path": "/home/singularity/Documents/Python Workspace/A_Star/visualization/font/static/RobotoMono-Italic.ttf",
+      "bold_italic_path": "/home/singularity/Documents/Python Workspace/A_Star/visualization/font/static/RobotoMono-BoldItalic.ttf"
+    }
+  },
+  "button": {
+    "font": {
+      "name": "roboto",
+      "size": "20"
+    }
+  },
+  "label": {
+    "font": {
+      "name": "roboto",
+      "size": "20"
+    }
+  },
+  "text_entry_line": {
+    "font": {
+      "name": "roboto",
+      "size": "28"
+    },
+    "misc": {
+      "text_horiz_alignment": "centre"
+    }
+  },
+  "drop_down_menu": {
+    "font": {
+      "name": "roboto",
+      "size": "20"
+    }
+  },
+  "#drop_down_menu.#selected_option": {
+    "font": {
+      "name": "roboto",
+      "size": "28"
+    }
+  },
+  "selection_list": {
+    "font": {
+      "name": "roboto",
+      "size": "28"
+    },
+    "misc": {
+      "list_item_height": "69"
+    }
+  },
+  "selection_list_item": {
+    "font": {
+      "name": "roboto",
+      "size": "28"
+    }
+  }
+}
