@@ -13,6 +13,13 @@ from world_content.biome import Biome
 from search.result import SearchResult
 from search.heuristics import HEURISTICS
 
+# Windows high-DPI fix
+import ctypes
+import sys
+
+if sys.platform.startswith("win"):
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # type: ignore[attr-defined]
+
 # Detect monitor resolution at import time
 pygame.init()
 _monitor_size = pygame.display.get_desktop_sizes()[0]

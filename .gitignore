@@ -25,3 +25,9 @@ Thumbs.db
 # Distribution/Packaging
 dist/
 build/
+
+# Generated at runtime
+visualization/theme.json
+
+# Pytest
+.pytest_cache/
