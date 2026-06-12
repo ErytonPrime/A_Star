@@ -28,6 +28,7 @@ def main():
     current_terrain_map: dict[tuple[int, int], TerrainType] = {}
     current_biome_modifier: float = 1.0
     current_biome: Optional[Biome] = None
+    current_custom_composition: dict[TerrainType, float] | None = None
     current_start: Optional[Node] = None
     current_goal: Optional[Node] = None
     valid_start_terrains: frozenset[TerrainType] = frozenset()
@@ -37,6 +38,9 @@ def main():
         Callable[
             [dict[tuple[int, int], TerrainType], frozenset[TerrainType], float], None
         ]
+    ] = None
+    get_composition_callback: Optional[
+        Callable[[], dict[TerrainType, float] | None]
     ] = None
     set_result_callback: Optional[Callable[[SearchResult, float], None]] = None
     set_flood_fill_callback: Optional[Callable[[SearchResult], None]] = None
@@ -52,6 +56,7 @@ def main():
         set_error,
         set_start,
         set_goal,
+        get_current_composition,
     ):
         nonlocal \
             set_grid_callback, \
@@ -60,7 +65,8 @@ def main():
             set_flood_fill_callback, \
             set_error_callback, \
             set_start_callback, \
-            set_goal_callback
+            set_goal_callback, \
+            get_composition_callback
         set_grid_callback = set_grid
         set_terrain_callback = set_terrain
         set_result_callback = set_result
@@ -68,14 +74,19 @@ def main():
         set_error_callback = set_error
         set_start_callback = set_start
         set_goal_callback = set_goal
+        get_composition_callback = get_current_composition
         set_grid(current_grid)
+
+    def get_current_composition() -> dict[TerrainType, float] | None:
+        return current_custom_composition
 
     def on_generate(width, height, shape_name):
         nonlocal \
             current_grid, \
             current_terrain_map, \
             current_biome_modifier, \
-            current_biome
+            current_biome, \
+            current_custom_composition
         nonlocal current_start, current_goal
         shape_map = {
             "Square": Shape.SQUARE,
@@ -85,6 +96,7 @@ def main():
         current_grid = Grid(width, height, shape_map[shape_name])
         current_terrain_map = {}
         current_biome_modifier = 1.0
+        current_custom_composition = None
         current_start = None
         current_goal = None
         if set_grid_callback:
@@ -92,16 +104,34 @@ def main():
         if set_terrain_callback:
             set_terrain_callback({}, frozenset(), 1.0)
 
-    def on_populate(biome: Biome, seed: int):
+    def on_populate(
+        biome: Biome,
+        seed: int,
+        custom_composition: dict[TerrainType, float] | None = None,
+    ):
         nonlocal \
             valid_start_terrains, \
             current_terrain_map, \
             current_biome_modifier, \
-            current_biome
+            current_biome, \
+            current_custom_composition
         nonlocal current_start, current_goal
-        composition = get_composition(biome)
+        if current_biome != biome:
+            current_custom_composition = None
+        if custom_composition is not None:
+            current_custom_composition = custom_composition
+        composition = (
+            current_custom_composition
+            if current_custom_composition is not None
+            else get_composition(biome)
+        )
         valid_start_terrains = get_valid_start_terrains(composition)
-        current_terrain_map = generate(current_grid, biome, seed=seed)
+        current_terrain_map = generate(
+            current_grid,
+            biome,
+            seed=seed,
+            custom_composition=current_custom_composition,
+        )
         current_biome_modifier = get_modifier(biome)
         current_biome = biome
         current_start = None
@@ -247,6 +277,7 @@ def main():
         on_run=on_run,
         initial_width=2,
         initial_height=1,
+        get_current_composition=get_current_composition,
     )
 
 

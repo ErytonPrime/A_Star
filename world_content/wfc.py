@@ -25,6 +25,7 @@ def _correction(
     current_counts: dict[TerrainType, int],
     target_composition: dict[TerrainType, float],
     total_collapsed: int,
+    steepness: float = 50.0,
 ) -> float:
     """
     Restoring force toward target biome composition.
@@ -32,7 +33,7 @@ def _correction(
     Uses exponential correction: exp(target_fraction - current_fraction)
     """
     if terrain not in target_composition:
-        return 0.0  # terrain not in this biome — impossible
+        return 0.0
 
     target = target_composition[terrain]
 
@@ -41,7 +42,7 @@ def _correction(
     else:
         current = current_counts.get(terrain, 0) / total_collapsed
 
-    return math.exp(target - current)
+    return 1.0 / (1.0 + math.exp(steepness * (current - target)))
 
 
 def _compute_probabilities(
@@ -142,6 +143,7 @@ def generate(
     grid: Grid,
     biome: Biome,
     seed: Optional[int] = None,
+    custom_composition: dict[TerrainType, float] | None = None,
 ) -> dict[tuple[int, int], TerrainType]:
     """
     Run WFC terrain generation on the grid for the given biome.
@@ -150,7 +152,9 @@ def generate(
     if seed is not None:
         random.seed(seed)
 
-    target_composition = get_composition(biome)
+    target_composition = (
+        custom_composition if custom_composition is not None else get_composition(biome)
+    )
     candidate_terrains = list(target_composition.keys())
 
     collapsed: dict[tuple[int, int], TerrainType] = {}

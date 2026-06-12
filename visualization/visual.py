@@ -7,6 +7,7 @@ from math import sqrt
 from typing import List, Tuple
 from visualization.camera import Camera
 from visualization.popup import Popup
+from visualization.composition_editor import CompositionEditor
 from topology.grid import Shape, Node
 from world_content.terrain import TerrainType, TERRAIN_COLORS, VALID_GOAL_TERRAINS
 from world_content.biome import Biome
@@ -81,6 +82,7 @@ HELP_ENTRIES = [
     ("R", "Replay visualization"),
     ("S", "Set start node"),
     ("G", "Set goal node"),
+    ("+  /  -", "Increase / decrease speed"),
 ]
 
 # Biome display names
@@ -287,6 +289,7 @@ def run(
     on_run,
     initial_width,
     initial_height,
+    get_current_composition,
 ):
     global INTERNAL_WIDTH, INTERNAL_HEIGHT
     pygame.init()
@@ -527,10 +530,22 @@ def run(
         relative_rect=pygame.Rect(
             sidebar_x,
             terrain_panel_top + row_stride * 2 + padding,
-            widget_width,
+            int((widget_width - padding) / 2),
             WIDGET_HEIGHT,
         ),
         text="Populate",
+        manager=manager,
+    )
+
+    # Edit Composition button
+    edit_composition_button = pygame_gui.elements.UIButton(
+        relative_rect=pygame.Rect(
+            sidebar_x + int((widget_width - padding) / 2) + padding,
+            terrain_panel_top + row_stride * 2 + padding,
+            int((widget_width - padding) / 2),
+            WIDGET_HEIGHT,
+        ),
+        text="Edit Biome",
         manager=manager,
     )
 
@@ -686,7 +701,7 @@ def run(
         relative_rect=pygame.Rect(
             sidebar_x,
             control_panel_top + row_stride * 3 + padding + WIDGET_HEIGHT,
-            int(widget_width / 2 - padding),
+            int((widget_width - padding) / 2),
             WIDGET_HEIGHT,
         ),
         text="Run",
@@ -696,9 +711,9 @@ def run(
     # Replay button
     replay_button = pygame_gui.elements.UIButton(
         relative_rect=pygame.Rect(
-            sidebar_x + int(widget_width / 2 - padding) + 2 * padding,
+            sidebar_x + int((widget_width - padding) / 2) + padding,
             control_panel_top + row_stride * 3 + padding + WIDGET_HEIGHT,
-            int(widget_width / 2 - padding),
+            int((widget_width - padding) / 2),
             WIDGET_HEIGHT,
         ),
         text="Replay",
@@ -753,6 +768,10 @@ def run(
     # --- Biome state ---
     valid_start_terrains: frozenset[TerrainType] = frozenset()
     biome_modifier: float = 1.0
+
+    # --- Editor state ---
+    show_editor: bool = False
+    composition_editor: CompositionEditor | None = None
 
     # --- Pathfinding state ---
     # None = no mode, "start" = placing start, "goal" = placing goal
@@ -1347,6 +1366,14 @@ def run(
             int(raw[1] * INTERNAL_HEIGHT / screen_h),
         )
 
+    def on_composition_confirm(composition: dict[TerrainType, float]):
+        nonlocal show_editor
+        show_editor = False
+        biome_name = biome_dropdown.selected_option[0]
+        biome = BIOME_BY_NAME[biome_name]
+        seed = int(seed_input.get_text()) if seed_input.get_text() else 42
+        on_populate(biome, seed, composition)
+
     on_grid_ready(
         set_grid,
         set_terrain,
@@ -1355,6 +1382,7 @@ def run(
         set_error,
         set_start,
         set_goal,
+        get_current_composition,
     )
     _original_get_pos = pygame.mouse.get_pos
     pygame.mouse.get_pos = get_scaled_mouse_pos  # type: ignore
@@ -1388,7 +1416,7 @@ def run(
                     if visited_index >= len(search_result.visited):
                         visualization_done = True
 
-        if is_on_canvas(mouse_x, mouse_y) and not show_help:
+        if is_on_canvas(mouse_x, mouse_y) and not show_help and not show_editor:
             tooltip_node = get_node_at_screen(mouse_x, mouse_y)
         else:
             tooltip_node = None
@@ -1409,41 +1437,48 @@ def run(
                         )
                 if event.key == pygame.K_h:
                     toggle_help()
-                if event.key == pygame.K_r and not show_help:
-                    if search_result is not None:
+                if not show_help and not show_editor:
+                    if event.key == pygame.K_r:
+                        if search_result is not None:
+                            visited_index = 0
+                            visualization_done = False
+                            step_timer = 0.0
+                    if event.key == pygame.K_SPACE:
+                        current_algorithm_name = algorithm_dropdown.selected_option[0]
+                        current_heuristic_name = heuristic_dropdown.selected_option[0]
+                        run_flood_fill = flood_fill_checkbox.is_checked
+                        dismiss_popup()
+                        on_run(
+                            current_algorithm_name,
+                            current_heuristic_name,
+                            run_flood_fill,
+                        )
+                    if event.key == pygame.K_s:
+                        if placement_mode == "start":
+                            placement_mode = None
+                            start_node = None
+                        else:
+                            placement_mode = "start"
+                        results_history.clear()
+                        search_result = None
                         visited_index = 0
                         visualization_done = False
-                        step_timer = 0.0
-                if event.key == pygame.K_SPACE and not show_help:
-                    current_algorithm_name = algorithm_dropdown.selected_option[0]
-                    current_heuristic_name = heuristic_dropdown.selected_option[0]
-                    run_flood_fill = flood_fill_checkbox.is_checked
-                    dismiss_popup()
-                    on_run(
-                        current_algorithm_name, current_heuristic_name, run_flood_fill
-                    )
-                if event.key == pygame.K_s and not show_help:
-                    if placement_mode == "start":
-                        placement_mode = None
-                        start_node = None
-                    else:
-                        placement_mode = "start"
-                    results_history.clear()
-                    search_result = None
-                    visited_index = 0
-                    visualization_done = False
-                if event.key == pygame.K_g and not show_help:
-                    if placement_mode == "goal":
-                        placement_mode = None
-                        goal_node = None
-                    else:
-                        placement_mode = "goal"
-                    results_history.clear()
-                    search_result = None
-                    visited_index = 0
-                    visualization_done = False
-
-            if not show_help:
+                    if event.key == pygame.K_g:
+                        if placement_mode == "goal":
+                            placement_mode = None
+                            goal_node = None
+                        else:
+                            placement_mode = "goal"
+                        results_history.clear()
+                        search_result = None
+                        visited_index = 0
+                        visualization_done = False
+                    if event.key in (pygame.K_PLUS, pygame.K_KP_PLUS, pygame.K_EQUALS):
+                        new_speed = min(500, int(speed_slider.get_current_value()) + 1)
+                        speed_slider.set_current_value(new_speed)
+                    if event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                        new_speed = max(1, int(speed_slider.get_current_value()) - 1)
+                        speed_slider.set_current_value(new_speed)
                 if event.type == pygame.MOUSEWHEEL and is_on_canvas(mouse_x, mouse_y):
                     if event.y > 0:
                         camera.zoom(ZOOM_IN_FACTOR, mouse_x, mouse_y)
@@ -1474,6 +1509,23 @@ def run(
                     dismiss_popup()
                     validate_and_populate()
                     results_history.clear()
+                if event.ui_element == edit_composition_button:
+                    show_editor = True
+                    biome_name = biome_dropdown.selected_option[0]
+                    biome = BIOME_BY_NAME[biome_name]
+                    composition_editor = CompositionEditor(
+                        manager=manager,
+                        biome=biome,
+                        current_shape=current_shape,
+                        canvas_width=CANVAS_WIDTH,
+                        internal_width=INTERNAL_WIDTH,
+                        internal_height=INTERNAL_HEIGHT,
+                        widget_height=WIDGET_HEIGHT,
+                        font=overlay_key_font,
+                        title_font=overlay_title_font,
+                        on_confirm=on_composition_confirm,
+                        current_composition=get_current_composition(),
+                    )
                 if event.ui_element == help_button:
                     toggle_help()
                 if event.ui_element == close_help_button:
@@ -1521,6 +1573,10 @@ def run(
 
             if active_popup is not None:
                 active_popup.handle_event(event)
+            if composition_editor is not None:
+                consumed = composition_editor.handle_event(event)
+                if consumed and not composition_editor.visible:
+                    show_editor = False
 
             manager.process_events(scale_event(event))
 
@@ -1561,6 +1617,9 @@ def run(
         draw_panel(internal_surface, panel_font, "Control", control_panel_rect)
         draw_grid(internal_surface, pulse)
         draw_results_table(internal_surface, panel_font)
+
+        if composition_editor is not None and composition_editor.visible:
+            composition_editor.draw(internal_surface)
 
         if show_help:
             close_rect = draw_help_overlay(
